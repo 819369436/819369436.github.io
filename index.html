@@ -365,6 +365,164 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2018/09/20/mysql百万数据优化/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="斜阳独倚西楼">
+      <meta itemprop="description" content="写点啥好呢">
+      <meta itemprop="image" content="/images/myAvatar.jpg">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="zrt的博客">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2018/09/20/mysql百万数据优化/" itemprop="url">
+                  Unbenannt
+                </a>
+              
+            
+          </h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+
+            
+            
+            
+
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Veröffentlicht am</span>
+              
+
+              
+                
+              
+
+              <time title="Post created: 2018-09-20 17:40:52 / Updated at: 17:39:31" itemprop="dateCreated datePublished" datetime="2018-09-20T17:40:52+08:00">2018-09-20</time>
+            
+
+            
+              
+
+              
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+		  
+		  
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="前言："><a href="#前言：" class="headerlink" title="前言："></a>前言：</h2><pre><code>在网上看了很多这样百万级数据、千万级数据查询的博客，分析过后他们的笔记都是一些简单的demo和一些简单的笔记，并不能完全体现在项目业务中的处理查询百万级数据。分析他们的一些处理要点大多是一张表插入了百万数据然后操作，一些简单直白的select xxx from t where xxx=xxx此语法，然而在公司项目业务中往往是要好几表关联查询数据。
+</code></pre><h2 id="一、一些操作查询百万数据的要点："><a href="#一、一些操作查询百万数据的要点：" class="headerlink" title="一、一些操作查询百万数据的要点："></a>一、一些操作查询百万数据的要点：</h2><h4 id="1、最关键的就是加索引了，给要查询的字段直接加索引"><a href="#1、最关键的就是加索引了，给要查询的字段直接加索引" class="headerlink" title="1、最关键的就是加索引了，给要查询的字段直接加索引"></a>1、最关键的就是加索引了，给要查询的字段直接加索引</h4><h4 id="2、尽量避免使用or、in-、not-in这样的语法，否则将会导致引擎放弃使用索引而进行全表扫描如："><a href="#2、尽量避免使用or、in-、not-in这样的语法，否则将会导致引擎放弃使用索引而进行全表扫描如：" class="headerlink" title="2、尽量避免使用or、in 、not in这样的语法，否则将会导致引擎放弃使用索引而进行全表扫描如："></a>2、尽量避免使用or、in 、not in这样的语法，否则将会导致引擎放弃使用索引而进行全表扫描如：</h4><p> select id from t where num is null<br> 可以在num上设置默认值0，确保表中num列没有null值，然后这样查询：<br> select id from t where num=0</p>
+<p>　　　　select id from t where num=10 or num=20<br>　　　　可以这样查询：<br>　　　　select id from t where num=10<br>　　　　union all<br>　　　　select id from t where num=20</p>
+<p>　　　　下面的查询也将导致全表扫描：(不能前置百分号)<br>　　　　select id from t where name like ‘%c%’<br>　　　　若要提高效率，可以考虑全文检索。</p>
+<p>　　　　很多时候用 exists 代替 in 是一个好的选择：<br>　　　　select num from a where num in(select num from b)<br>　　　　用下面的语句替换：<br>　　　　select num from a where exists(select 1 from b where num=a.num)</p>
+<p>二、2018年9月20日 自己本地数据库的测试，我在t_task表加了大约200万条数据</p>
+<p> 　　2.1 单表查询：</p>
+<p>#title已加了索引<br>SELECT * FROM t_task WHERE title = ‘去阿富汗发传单904998’  //只用了0.002s确实很快
+　　</p>
+<p>　　2.2 联表查询：</p>
+<h4 id="也只用了0-01s"><a href="#也只用了0-01s" class="headerlink" title="也只用了0.01s"></a>也只用了0.01s</h4><p>SELECT<br>            tt.id,<br>            tt.title,<br>            tt.isComeDate,<br>            DATE_FORMAT(tt.comeDate,’%Y-%m-%d %H:%i’) AS comeDate,<br>            DATE_FORMAT(tt.startDate,’%Y-%m-%d %H:%i’) AS startDate,<br>            DATE_FORMAT(tt.endDate,’%Y-%m-%d %H:%i’) AS endDate,<br>            tt.isWorkDate,<br>            tt.isSex,<br>            tt.terminate,<br>            tt.needNum,<br>            tt.number,<br>            tt.price,<br>            tt.timeType,<br>            tt.trusteeship,<br>            tt.isHot,<br>            (<br>            CASE<br>            WHEN WEEKDAY(tt.comeDate) = 0 THEN ‘周一’<br>            WHEN WEEKDAY(tt.comeDate) = 1 THEN ‘周二’<br>            WHEN WEEKDAY(tt.comeDate) = 2 THEN ‘周三’<br>            WHEN WEEKDAY(tt.comeDate) = 3 THEN ‘周四’<br>            WHEN WEEKDAY(tt.comeDate) = 4 THEN ‘周五’<br>            WHEN WEEKDAY(tt.comeDate) = 5 THEN ‘周六’<br>            WHEN WEEKDAY(tt.comeDate) = 6 THEN ‘周日’<br>            ELSE ‘’<br>            END<br>            ) AS weekDay,<br>            tu.userName AS userName,<br>            tp.position AS position,<br>            ta.name AS areaName,<br>            ta2.name AS cityName<br>        FROM<br>          t_task tt<br>        LEFT JOIN t_user tu ON tu.id = tt.uid<br>        LEFT JOIN t_position tp ON tp.id = tt.positionId<br>        LEFT JOIN t_area ta ON ta.id = tt.area<br>        LEFT JOIN t_area ta2 ON ta2.id = tt.city<br>WHERE<br>    title = ‘去阿富汗发传单904998’</p>
+<p> 　　以上查询都是查单条数据，那么我要查一个集合呢？查sex等于1的，或是查其他条件的集合，就直接崩溃了</p>
+<p>　　解决方法：使用id限定优化</p>
+<p>　　就是当此表id主键是自增的情况下，我们设定查询id的范围，给id定位查询出数据，再根据这些数据进行查询。</p>
+<p>#只用了0.318s，这里抛弃了190万之前的历史数据，一般页面不会一直显示几百万的数据，几百万的数据全查出来都会有几十万页，一般人十几页都懒得翻，所以没必要查几十万页，显示几百来页就行了<br>SELECT <em> FROM t_task WHERE id &gt;= 1900000  //不建议写</em>来查，最好要查什么字段就写什么字段，哪怕全查也要把全部字段写出来，我这里是为了方便，测试用的</p>
+<p>SELECT id FROM t_task WHERE id &gt;= 1900000  //直接写字段名查询，只用了0.035s,查询速度提升了10倍，所以说不建议写*来查数据</p>
+<p>基本就是这样了，感觉这还够，以后找机会再弄吧</p>
+
+          
+        
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="http://yoursite.com/2018/09/19/myFirstBlog/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -822,7 +980,7 @@
                 
                   <a href="/archives">
                 
-                    <span class="site-state-item-count">3</span>
+                    <span class="site-state-item-count">4</span>
                     <span class="site-state-item-name">Artikel</span>
                   </a>
                 </div>
